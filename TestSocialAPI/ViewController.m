@@ -10,7 +10,7 @@
 #import <VKSdk.h>
 #import "AppDelegate.h"
 
-#define kAppID @"5557468"
+#define kAppID @"put_your_own_app_id"
 
 @interface ViewController ()<VKSdkDelegate, VKSdkUIDelegate>
 @property (nonatomic, strong) VKSdk *vkSdkInstance;
@@ -104,8 +104,6 @@
 }
 
 //
-// https://new.vk.com/dev/users
-// https://new.vk.com/dev/friends
 
 - (void)loadFriends {
     VKRequest *vkFriends = [[VKApi friends] get:@{@"count":@1000, @"fields":@"nickname"}];
@@ -156,9 +154,6 @@
         });
         
     });
-    
-    //    "" = "https://pp.vk.me/c608617/v608617231/1fc1/scUkukVtuN8.jpg";
-    //    verified = 0;
 }
 
 
@@ -181,11 +176,9 @@
 }
 
 - (IBAction)showVKFriendsAction:(id)sender {
-    //[self performSegueWithIdentifier:@"ShowFriends" sender:self];
     [self loadFriends];
 }
 
 - (IBAction)showFBFriendsAction:(id)sender {
-    //[self performSegueWithIdentifier:@"ShowFriends" sender:self];
 }
 @end
