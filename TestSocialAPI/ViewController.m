@@ -9,12 +9,13 @@
 #import "ViewController.h"
 #import <VKSdk.h>
 #import "AppDelegate.h"
+#import <FBSDKLoginKit/FBSDKLoginKit.h>
+#import <FBSDKCoreKit/FBSDKAccessToken.h>
+#import <FBSDKCoreKit/FBSDKGraphRequest.h>
 
 #define kAppID @"put_your_own_app_id"
 
 @interface ViewController ()<VKSdkDelegate, VKSdkUIDelegate>
-@property (nonatomic, strong) VKSdk *vkSdkInstance;
-@property (nonatomic, strong) NSArray *scope;
 @property (nonatomic, strong) NSArray *friends;
 @end
 
@@ -22,21 +23,10 @@
 
 - (void)viewDidLoad {
     [super viewDidLoad];
-    
-    VKSdk *vkSdkInstance = [VKSdk initializeWithAppId:kAppID] ;
-    [vkSdkInstance registerDelegate:self];
-    [vkSdkInstance setUiDelegate:self];
-    self.vkSdkInstance = vkSdkInstance;
-    
-    NSArray *scope = @[@"email", @"friends", @"photos"];
-    self.scope = scope;
-    
 }
 
 - (void)viewDidAppear:(BOOL)animated {
     [super viewWillAppear:animated];
-    
-    
 }
 
 #pragma mark - VKSdkDelegate
@@ -129,6 +119,18 @@
     [self.tableView reloadData];
 }
 
+- (void)loadPhotoByURL:(NSString*)photoURL {
+    dispatch_async(dispatch_get_global_queue(0,0), ^{
+        NSData * data = [[NSData alloc] initWithContentsOfURL: [NSURL URLWithString: photoURL]];
+        if (data == nil) {
+            return;
+        }
+        dispatch_async(dispatch_get_main_queue(), ^{
+            self.imageView.image = [UIImage imageWithData: data];
+        });
+    });
+}
+
 - (void)updateUIwithVKResponse:(VKResponse*)vkResponse {
     if (![vkResponse.json isKindOfClass:[NSArray class]]) {
         return;
@@ -141,31 +143,52 @@
     NSString *firstName = json[@"first_name"];
     NSString *lastName = json[@"last_name"];
     NSString *vkId = json[@"id"];
-    self.nameLabel.text = [NSString stringWithFormat:@"%@ %@ (%@)", firstName, lastName, vkId];
+    self.nameLabel.text = [NSString stringWithFormat:@"VK: %@ %@ (%@)", firstName, lastName, vkId];
     NSString *photoURL = json[@"photo_100"];
     
-    dispatch_async(dispatch_get_global_queue(0,0), ^{
-        NSData * data = [[NSData alloc] initWithContentsOfURL: [NSURL URLWithString: photoURL]];
-        if (data == nil) {
-            return;
-        }
-        dispatch_async(dispatch_get_main_queue(), ^{
-            self.imageView.image = [UIImage imageWithData: data];
-        });
-        
-    });
+    [self loadPhotoByURL:photoURL];
 }
+
+- (void)loadFriendsFromFB {
+    if ([FBSDKAccessToken currentAccessToken]) {
+        [[[FBSDKGraphRequest alloc] initWithGraphPath:@"me" parameters:@{ @"fields" : @"id,email,name,picture.width(100).height(100)"}]startWithCompletionHandler:^(FBSDKGraphRequestConnection *connection, id result, NSError *error) {
+            if (!error) {
+                [self updateUIwithFBResponse:result];
+            }
+        }];
+    }
+}
+
+- (void)updateUIwithFBResponse:(id)fbResponse {
+    if (![fbResponse isKindOfClass:[NSDictionary class]]) {
+        return;
+    }
+    NSDictionary *json = fbResponse;
+    NSString *name = json[@"name"];
+    NSString *email = json[@"email"];
+    NSString *fbId = json[@"id"];
+    self.nameLabel.text = [NSString stringWithFormat:@"FB: %@ %@ (%@)", name, @"", fbId];
+    NSString *photoURL = [[[json valueForKey:@"picture"] valueForKey:@"data"] valueForKey:@"url"];
+    self.emailLabel.text = email;
+    [self loadPhotoByURL:photoURL];
+}
+
 
 
 #pragma mark - IBActions
 - (IBAction)loadVKInfoAction:(id)sender {
-    [VKSdk wakeUpSession:self.scope completeBlock:^(VKAuthorizationState state, NSError *err) {
+    VKSdk *vkSdkInstance = [VKSdk initializeWithAppId:kAppID] ;
+    [vkSdkInstance registerDelegate:self];
+    [vkSdkInstance setUiDelegate:self];
+    NSArray *scope = @[@"email", @"friends", @"photos"];
+    
+    [VKSdk wakeUpSession:scope completeBlock:^(VKAuthorizationState state, NSError *err) {
         if (state == VKAuthorizationAuthorized) {
             // authorized
             [self loadUsers];
         } else {
             // auth needed
-            [VKSdk authorize:self.scope];
+            [VKSdk authorize:scope];
         }
     }];
     
@@ -173,6 +196,30 @@
 }
 
 - (IBAction)loadFBInfoAction:(id)sender {
+    
+    if ([FBSDKAccessToken currentAccessToken]) {
+        // User is logged in, do work such as go to next view controller.
+        NSLog(@"ok");
+        [self loadFriendsFromFB];
+    } else {
+        NSLog(@"!ok");
+        FBSDKLoginManager *login = [[FBSDKLoginManager alloc] init];
+        
+        [login logInWithReadPermissions: @[@"public_profile", @"email", @"user_friends"]
+                     fromViewController:self
+                                handler:^(FBSDKLoginManagerLoginResult *result, NSError *error) {
+                                    if (error) {
+                                        NSLog(@"Process error");
+                                    } else if (result.isCancelled) {
+                                        NSLog(@"Cancelled");
+                                    } else {
+                                        NSLog(@"Logged in");
+                                        [self loadFriendsFromFB];
+                                    }
+                                }];
+
+    }
+
 }
 
 - (IBAction)showVKFriendsAction:(id)sender {
