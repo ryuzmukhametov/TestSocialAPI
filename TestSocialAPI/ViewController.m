@@ -80,7 +80,7 @@
 
 #pragma mark - Aux
 - (void) loadUsers {
-    VKRequest *vkUsers = [[VKApi users] get:@{@"fields":@"photo_100,city,verified"}];
+    VKRequest *vkUsers = [[VKApi users] get:@{@"fields":@"photo_100,city,verified,sex"}];
     [vkUsers executeWithResultBlock:^(VKResponse *response) {
         NSLog(@"Json result: %@", response.json);
         [self updateUIwithVKResponse:response];
@@ -143,20 +143,34 @@
     NSString *firstName = json[@"first_name"];
     NSString *lastName = json[@"last_name"];
     NSString *vkId = json[@"id"];
-    self.nameLabel.text = [NSString stringWithFormat:@"VK: %@ %@ (%@)", firstName, lastName, vkId];
+    NSNumber *sex = json[@"sex"]; // 1 - female, 2 - male
+    NSString *gender = sex.integerValue == 1 ? @"femail" : @"male";
+    self.nameLabel.text = [NSString stringWithFormat:@"VK: %@ %@ (%@) %@", firstName, lastName, vkId, gender];
     NSString *photoURL = json[@"photo_100"];
     
     [self loadPhotoByURL:photoURL];
 }
 
-- (void)loadFriendsFromFB {
+- (void)loadUsersFromFB {
     if ([FBSDKAccessToken currentAccessToken]) {
-        [[[FBSDKGraphRequest alloc] initWithGraphPath:@"me" parameters:@{ @"fields" : @"id,email,name,picture.width(100).height(100)"}]startWithCompletionHandler:^(FBSDKGraphRequestConnection *connection, id result, NSError *error) {
+        [[[FBSDKGraphRequest alloc] initWithGraphPath:@"me" parameters:@{ @"fields" : @"id,email,name,gender,picture.width(100).height(100)"}]startWithCompletionHandler:^(FBSDKGraphRequestConnection *connection, id result, NSError *error) {
             if (!error) {
                 [self updateUIwithFBResponse:result];
             }
         }];
     }
+}
+
+- (void)loadFriendsFromFB {
+    if ([FBSDKAccessToken currentAccessToken]) {
+        [[[FBSDKGraphRequest alloc] initWithGraphPath:@"me/taggable_friends" parameters:@{ @"fields" : @"friendlists,id,name,gender"}]startWithCompletionHandler:^(FBSDKGraphRequestConnection *connection, id result, NSError *error) {
+            if (!error) {
+                [self updateUIwithFBResponse:result];
+            }
+        }];
+    }
+
+    
 }
 
 - (void)updateUIwithFBResponse:(id)fbResponse {
@@ -167,7 +181,8 @@
     NSString *name = json[@"name"];
     NSString *email = json[@"email"];
     NSString *fbId = json[@"id"];
-    self.nameLabel.text = [NSString stringWithFormat:@"FB: %@ %@ (%@)", name, @"", fbId];
+    NSString *gender = json[@"gender"]; // male or female
+    self.nameLabel.text = [NSString stringWithFormat:@"FB: %@ %@ (%@) %@", name, @"", fbId, gender];
     NSString *photoURL = [[[json valueForKey:@"picture"] valueForKey:@"data"] valueForKey:@"url"];
     self.emailLabel.text = email;
     [self loadPhotoByURL:photoURL];
@@ -200,7 +215,7 @@
     if ([FBSDKAccessToken currentAccessToken]) {
         // User is logged in, do work such as go to next view controller.
         NSLog(@"ok");
-        [self loadFriendsFromFB];
+        [self loadUsersFromFB];
     } else {
         NSLog(@"!ok");
         FBSDKLoginManager *login = [[FBSDKLoginManager alloc] init];
@@ -214,7 +229,7 @@
                                         NSLog(@"Cancelled");
                                     } else {
                                         NSLog(@"Logged in");
-                                        [self loadFriendsFromFB];
+                                        [self loadUsersFromFB];
                                     }
                                 }];
 
@@ -227,5 +242,6 @@
 }
 
 - (IBAction)showFBFriendsAction:(id)sender {
+    [self loadFriendsFromFB];
 }
 @end
