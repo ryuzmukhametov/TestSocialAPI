@@ -12,6 +12,8 @@
 #import <FBSDKLoginKit/FBSDKLoginKit.h>
 #import <FBSDKCoreKit/FBSDKAccessToken.h>
 #import <FBSDKCoreKit/FBSDKGraphRequest.h>
+#import <FBSDKShareKit/FBSDKAppInviteContent.h>
+#import <FBSDKShareKit/FBSDKAppInviteDialog.h>
 
 #define kAppID @"put_your_own_app_id"
 
@@ -27,6 +29,7 @@
 
 - (void)viewDidAppear:(BOOL)animated {
     [super viewWillAppear:animated];
+    
 }
 
 #pragma mark - VKSdkDelegate
@@ -74,9 +77,21 @@
     NSString *firstName = dict[@"first_name"];
     NSString *lastName = dict[@"last_name"];
     NSString *friendId = dict[@"id"];
-    cell.textLabel.text = [NSString stringWithFormat:@"%@ %@ (%@)", firstName, lastName, friendId];
+    NSString *name = dict[@"name"];
+    NSString *photo = dict[@"photo_100"];
+    
+    if (name.length == 0) {
+        name = [NSString stringWithFormat:@"%@ %@", firstName, lastName];
+    }
+    cell.textLabel.text = [NSString stringWithFormat:@"%@ (%@)", name, friendId];
     return cell;
 }
+
+- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
+
+    
+}
+
 
 #pragma mark - Aux
 - (void) loadUsers {
@@ -93,10 +108,45 @@
     }];
 }
 
-//
+
+- (void)appInviteDialog:(FBSDKAppInviteDialog *)appInviteDialog didCompleteWithResults:(NSDictionary *)results {
+    NSLog(@"results = %@", results);
+}
+
+- (void)appInviteDialog:(FBSDKAppInviteDialog *)appInviteDialog didFailWithError:(NSError *)error {
+    NSLog(@"error = %@", error);
+}
+
+- (void)sendFBMessage {
+    
+    FBSDKAppInviteContent *content =[[FBSDKAppInviteContent alloc] init];
+    content.appLinkURL = [NSURL URLWithString:@"https://link"];
+    //optionally set previewImageURL
+    content.appInvitePreviewImageURL = [NSURL URLWithString:@"https://link"];
+    
+    // Present the dialog. Assumes self is a view controller
+    // which implements the protocol `FBSDKAppInviteDialogDelegate`.
+    [FBSDKAppInviteDialog showFromViewController:self
+                                     withContent:content
+                                        delegate:self];
+    
+}
+
+- (void)sendVKMessage {
+        VKRequest *vkSendMessage = [VKRequest requestWithMethod:@"messages.send" parameters:@{@"user_id":@111, @"message":@"test message"}];
+    __weak typeof(self) weakSelf = self;
+    [vkSendMessage executeWithResultBlock:^(VKResponse *response) {
+        NSLog(@"Json result: %@", response.json);
+        //[weakSelf processLoadVKFriendsResultByResponse:response];
+    } errorBlock:^(NSError * error) {
+        NSLog(@"%@", error);
+        //[weakSelf processResultByError:error];
+    }];
+
+}
 
 - (void)loadFriends {
-    VKRequest *vkFriends = [[VKApi friends] get:@{@"count":@1000, @"fields":@"nickname"}];
+    VKRequest *vkFriends = [[VKApi friends] get:@{@"count":@1000, @"fields":@"nickname,photo_50"}];
     [vkFriends executeWithResultBlock:^(VKResponse *response) {
         NSLog(@"Json result: %@", response.json);
         [self updateUIwithFriendsVKResponse:response];
@@ -163,9 +213,9 @@
 
 - (void)loadFriendsFromFB {
     if ([FBSDKAccessToken currentAccessToken]) {
-        [[[FBSDKGraphRequest alloc] initWithGraphPath:@"me/taggable_friends" parameters:@{ @"fields" : @"friendlists,id,name,gender"}]startWithCompletionHandler:^(FBSDKGraphRequestConnection *connection, id result, NSError *error) {
+        [[[FBSDKGraphRequest alloc] initWithGraphPath:@"me/friends" parameters:@{ @"fields" : @"id,name,gender"}]startWithCompletionHandler:^(FBSDKGraphRequestConnection *connection, id result, NSError *error) {
             if (!error) {
-                [self updateUIwithFBResponse:result];
+                [self updateUIwithFBFriendsResponse:result];
             }
         }];
     }
@@ -188,14 +238,25 @@
     [self loadPhotoByURL:photoURL];
 }
 
+- (void)updateUIwithFBFriendsResponse:(id)fbResponse {
+    if (![fbResponse isKindOfClass:[NSDictionary class]]) {
+        return;
+    }
+    NSArray *arr = fbResponse[@"data"];
+    self.friends = arr;
+    [self.tableView reloadData];
+}
+
 
 
 #pragma mark - IBActions
 - (IBAction)loadVKInfoAction:(id)sender {
+    [VKSdk forceLogout];
     VKSdk *vkSdkInstance = [VKSdk initializeWithAppId:kAppID] ;
+    
     [vkSdkInstance registerDelegate:self];
     [vkSdkInstance setUiDelegate:self];
-    NSArray *scope = @[@"email", @"friends", @"photos"];
+    NSArray *scope = @[@"email", @"friends", @"photos", @"messages"];
     
     [VKSdk wakeUpSession:scope completeBlock:^(VKAuthorizationState state, NSError *err) {
         if (state == VKAuthorizationAuthorized) {
